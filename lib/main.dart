@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
+import 'package:just_audio/just_audio.dart';
 
 void main() {
   runApp(const AmmaParaApp());
@@ -112,30 +114,34 @@ class HomeScreen extends StatelessWidget {
             icon: Icons.headphones_rounded,
             title: 'Listen to Tilawat',
             subtitle: 'Listen to Quran recitation',
-            onTap: () => _message(context, 'Tilawat audio is coming next.'),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SurahListScreen()),
+            ),
           ),
           _FeatureCard(
             icon: Icons.school_rounded,
             title: 'Learn Arabic Grammar',
             subtitle: 'Study Ism, Fi‘l, Harf, Nahw and Sarf',
-            onTap: () => _message(context, 'Arabic grammar is coming next.'),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const GrammarScreen()),
+            ),
           ),
           _FeatureCard(
             icon: Icons.quiz_rounded,
             title: 'Practice Quiz',
             subtitle: 'Test your Quran and grammar knowledge',
-            onTap: () => _message(context, 'Practice quiz is coming next.'),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const GrammarQuizScreen()),
+            ),
           ),
         ],
       ),
     );
   }
 
-  static void _message(BuildContext context, String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
-  }
 }
 
 class _FeatureCard extends StatelessWidget {
@@ -324,11 +330,44 @@ class SurahReaderScreen extends StatefulWidget {
 
 class _SurahReaderScreenState extends State<SurahReaderScreen> {
   late Future<List<Map<String, dynamic>>> ayahsFuture;
+  final AudioPlayer audioPlayer = AudioPlayer();
+  int? playingAyahNumber;
 
   @override
   void initState() {
     super.initState();
     ayahsFuture = loadAyahs();
+  }
+
+  Future<void> toggleAyah(int ayahNumber) async {
+    if (playingAyahNumber == ayahNumber && audioPlayer.playing) {
+      await audioPlayer.pause();
+      if (mounted) setState(() => playingAyahNumber = null);
+      return;
+    }
+    if (playingAyahNumber == ayahNumber && audioPlayer.processingState != ProcessingState.completed) {
+      await audioPlayer.play();
+      return;
+    }
+    await playAyah(ayahNumber);
+    if (mounted) setState(() => playingAyahNumber = ayahNumber);
+  }
+
+  Future<void> playAyah(int ayahNumber) async {
+    try {
+      final audioUrl = 'https://cdn.islamic.network/quran/audio/128/ar.alafasy/$ayahNumber.mp3';
+      await audioPlayer.setUrl(audioUrl);
+      await audioPlayer.play();
+      if (mounted) {
+        setState(() => playingAyahNumber = ayahNumber);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Audio could not be played. Please try again.')),
+        );
+      }
+    }
   }
 
   Future<List<Map<String, dynamic>>> loadAyahs() async {
@@ -362,12 +401,19 @@ class _SurahReaderScreenState extends State<SurahReaderScreen> {
 
       result.add({
         'number': arabicData[i]['numberInSurah'],
+        'globalNumber': arabicData[i]['number'],
         'arabic': arabicData[i]['text'],
         'urdu': urduData[i]['text'],
       });
     }
 
     return result;
+  }
+
+  @override
+  void dispose() {
+    audioPlayer.dispose();
+    super.dispose();
   }
 
   @override
@@ -416,7 +462,22 @@ class _SurahReaderScreenState extends State<SurahReaderScreen> {
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 8),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: IconButton(
+                          tooltip: playingAyahNumber == ayah['globalNumber'] && audioPlayer.playing ? 'Pause ayah' : 'Play ayah',
+                          icon: Icon(
+                            playingAyahNumber == ayah['globalNumber'] && audioPlayer.playing
+                                ? Icons.pause_circle_outline
+                                : Icons.play_circle_outline,
+                            color: forestGreen,
+                            size: 30,
+                          ),
+                          onPressed: () => toggleAyah(ayah['globalNumber'] as int),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
                       Text(
                         ayah['arabic'] as String,
                         textDirection: TextDirection.rtl,
@@ -443,6 +504,310 @@ class _SurahReaderScreenState extends State<SurahReaderScreen> {
                 ),
               );
             },
+          );
+        },
+      ),
+    );
+  }
+}
+
+class GrammarScreen extends StatelessWidget {
+  const GrammarScreen({super.key});
+
+  static const lessons = [
+    {
+      'title': '1. Ism (اسم)',
+      'meaning': 'A name, person, place, or thing.',
+      'example': 'رَبٌّ',
+      'urdu': 'ربّ — پالنے والا',
+    },
+    {
+      'title': '2. Fi‘l (فعل)',
+      'meaning': 'A word that expresses an action.',
+      'example': 'خَلَقَ',
+      'urdu': 'خَلَقَ — اس نے پیدا کیا',
+    },
+    {
+      'title': '3. Harf (حرف)',
+      'meaning': 'A particle whose meaning depends on its use with other words.',
+      'example': 'مِنْ',
+      'urdu': 'مِنْ — سے',
+    },
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: cream,
+      appBar: AppBar(
+        title: const Text('Arabic Grammar'),
+        backgroundColor: forestGreen,
+        foregroundColor: Colors.white,
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          const Text(
+            'Learn the Basics',
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 6),
+          const Text('Begin with three basic Arabic word categories.'),
+          const SizedBox(height: 16),
+          ...lessons.map((lesson) => Card(
+                color: Colors.white,
+                margin: const EdgeInsets.only(bottom: 12),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        lesson['title']!,
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: forestGreen,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(lesson['meaning']!),
+                      const SizedBox(height: 10),
+                      Center(
+                        child: Text(
+                          lesson['example']!,
+                          textDirection: TextDirection.rtl,
+                          style: const TextStyle(fontSize: 30),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(lesson['urdu']!),
+                    ],
+                  ),
+                ),
+              )),
+        ],
+      ),
+    );
+  }
+}
+
+
+class GrammarQuizScreen extends StatefulWidget {
+  const GrammarQuizScreen({super.key});
+
+  @override
+  State<GrammarQuizScreen> createState() => _GrammarQuizScreenState();
+}
+
+class _GrammarQuizScreenState extends State<GrammarQuizScreen> {
+  static const questions = [
+    {
+      'q': 'Which word is an Ism (noun)?',
+      'options': ['خَلَقَ', 'كِتَابٌ', 'مِنْ'],
+      'answer': 1,
+    },
+    {
+      'q': 'Which word is a Fi‘l (verb)?',
+      'options': ['مِنْ', 'رَبٌّ', 'خَلَقَ'],
+      'answer': 2,
+    },
+    {
+      'q': 'Which word is a Harf (particle)?',
+      'options': ['مِنْ', 'كِتَابٌ', 'ذَهَبَ'],
+      'answer': 0,
+    },
+    {
+      'q': 'An Ism can name a…',
+      'options': ['Person or thing', 'Only an action', 'Only a particle'],
+      'answer': 0,
+    },
+    {
+      'q': 'A Fi‘l usually expresses…',
+      'options': ['A name', 'An action', 'A place only'],
+      'answer': 1,
+    },
+  ];
+
+  int index = 0;
+  int score = 0;
+  int? selected;
+  bool finished = false;
+
+  Future<void> submitAnswer() async {
+    if (selected == null) return;
+
+    final newScore = score + (selected == questions[index]['answer'] ? 1 : 0);
+
+    if (index == questions.length - 1) {
+      final prefs = await SharedPreferences.getInstance();
+      final completed = (prefs.getInt('completedQuizzes') ?? 0) + 1;
+      await prefs.setInt('completedQuizzes', completed);
+      await prefs.setInt('lastQuizScore', newScore);
+      await prefs.setInt('bestQuizScore',
+          newScore > (prefs.getInt('bestQuizScore') ?? 0)
+              ? newScore
+              : (prefs.getInt('bestQuizScore') ?? 0));
+
+      if (!mounted) return;
+      setState(() {
+        score = newScore;
+        finished = true;
+      });
+    } else {
+      setState(() {
+        score = newScore;
+        index++;
+        selected = null;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: cream,
+      appBar: AppBar(
+        title: const Text('Practice Quiz'),
+        backgroundColor: forestGreen,
+        foregroundColor: Colors.white,
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(20),
+        child: finished
+            ? Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.emoji_events, size: 72, color: Color(0xFFD4AF65)),
+                    const SizedBox(height: 16),
+                    const Text('Quiz Completed!',
+                        style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 12),
+                    Text('Your score: $score / ${questions.length}',
+                        style: const TextStyle(fontSize: 22)),
+                    const SizedBox(height: 20),
+                    ElevatedButton(
+                      onPressed: () => setState(() {
+                        index = 0;
+                        score = 0;
+                        selected = null;
+                        finished = false;
+                      }),
+                      child: const Text('Try Again'),
+                    ),
+                  ],
+                ),
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('Question ${index + 1} of ${questions.length}',
+                      style: const TextStyle(color: forestGreen, fontSize: 16)),
+                  const SizedBox(height: 16),
+                  LinearProgressIndicator(
+                    value: (index + 1) / questions.length,
+                    color: forestGreen,
+                    backgroundColor: Colors.black12,
+                  ),
+                  const SizedBox(height: 28),
+                  Text(questions[index]['q'] as String,
+                      style: const TextStyle(fontSize: 23, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 18),
+                  ...(questions[index]['options'] as List<String>)
+                      .asMap()
+                      .entries
+                      .map((option) => Card(
+                            color: selected == option.key
+                                ? const Color(0xFFE2EBDD)
+                                : Colors.white,
+                            child: ListTile(
+                              leading: Icon(
+                                selected == option.key
+                                    ? Icons.radio_button_checked
+                                    : Icons.radio_button_unchecked,
+                                color: forestGreen,
+                              ),
+                              title: Text(option.value),
+                              onTap: () => setState(() => selected = option.key),
+                            ),
+                          )),
+                  const Spacer(),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: forestGreen,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.all(14),
+                    ),
+                    onPressed: selected == null ? null : submitAnswer,
+                    child: Text(index == questions.length - 1 ? 'Finish Quiz' : 'Next Question'),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+}
+
+
+class ProgressScreen extends StatelessWidget {
+  const ProgressScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: cream,
+      appBar: AppBar(
+        title: const Text('My Progress'),
+        backgroundColor: forestGreen,
+        foregroundColor: Colors.white,
+      ),
+      body: FutureBuilder<SharedPreferences>(
+        future: SharedPreferences.getInstance(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final prefs = snapshot.data!;
+          final completed = prefs.getInt('completedQuizzes') ?? 0;
+          final lastScore = prefs.getInt('lastQuizScore') ?? 0;
+          final bestScore = prefs.getInt('bestQuizScore') ?? 0;
+
+          Widget stat(String title, String value, IconData icon) {
+            return Card(
+              color: Colors.white,
+              child: ListTile(
+                leading: Icon(icon, color: forestGreen, size: 32),
+                title: Text(title),
+                trailing: Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: forestGreen,
+                  ),
+                ),
+              ),
+            );
+          }
+
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              const Text(
+                'Your Learning Journey',
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              stat('Quizzes completed', '$completed', Icons.quiz),
+              stat('Last quiz score', '$lastScore / 5', Icons.assignment_turned_in),
+              stat('Best quiz score', '$bestScore / 5', Icons.emoji_events),
+              const SizedBox(height: 12),
+              const Text(
+                'Complete a practice quiz to start building your progress.',
+                textAlign: TextAlign.center,
+              ),
+            ],
           );
         },
       ),
