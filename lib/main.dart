@@ -1,4 +1,5 @@
 import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
@@ -12,28 +13,147 @@ const Color forestGreen = Color(0xFF123D2B);
 const Color cream = Color(0xFFF7F3E8);
 const Color gold = Color(0xFFD4AF65);
 
-class AmmaParaApp extends StatelessWidget {
+final ValueNotifier<String> appLanguage = ValueNotifier<String>('en');
+final ValueNotifier<ThemeMode> appThemeMode = ValueNotifier<ThemeMode>(
+  ThemeMode.light,
+);
+
+String tr(String en, String ur) => appLanguage.value == 'ur' ? ur : en;
+
+class AmmaParaApp extends StatefulWidget {
   const AmmaParaApp({super.key});
 
   @override
+  State<AmmaParaApp> createState() => _AmmaParaAppState();
+}
+
+class _AmmaParaAppState extends State<AmmaParaApp> {
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    appLanguage.value = prefs.getString('app_language') ?? 'en';
+    appThemeMode.value = prefs.getBool('dark_mode') == true
+        ? ThemeMode.dark
+        : ThemeMode.light;
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Amma Para Quran',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        scaffoldBackgroundColor: cream,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: forestGreen,
-          primary: forestGreen,
-          surface: cream,
-        ),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: forestGreen,
-          foregroundColor: Colors.white,
-        ),
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: appThemeMode,
+      builder: (context, mode, _) {
+        return MaterialApp(
+          title: 'Amma Para Quran',
+          debugShowCheckedModeBanner: false,
+          themeMode: mode,
+          theme: ThemeData(
+            useMaterial3: true,
+            scaffoldBackgroundColor: cream,
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: forestGreen,
+              primary: forestGreen,
+              surface: cream,
+            ),
+            appBarTheme: const AppBarTheme(
+              backgroundColor: forestGreen,
+              foregroundColor: Colors.white,
+            ),
+            cardTheme: const CardThemeData(color: Colors.white),
+          ),
+          darkTheme: ThemeData(
+            useMaterial3: true,
+            brightness: Brightness.dark,
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: forestGreen,
+              brightness: Brightness.dark,
+            ),
+            appBarTheme: const AppBarTheme(
+              backgroundColor: forestGreen,
+              foregroundColor: Colors.white,
+            ),
+          ),
+          home: ValueListenableBuilder<String>(
+            valueListenable: appLanguage,
+            builder: (context, language, _) => const HomeScreen(),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class SettingsScreen extends StatefulWidget {
+  const SettingsScreen({super.key});
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  Future<void> _setLanguage(String language) async {
+    appLanguage.value = language;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('app_language', language);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _setDarkMode(bool enabled) async {
+    appThemeMode.value = enabled ? ThemeMode.dark : ThemeMode.light;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('dark_mode', enabled);
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final urdu = appLanguage.value == 'ur';
+    return Scaffold(
+      appBar: AppBar(title: Text(urdu ? 'ترتیبات' : 'Settings')),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Text(
+            urdu ? 'زبان / Language' : 'Language / زبان',
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+          RadioGroup<String>(
+            groupValue: appLanguage.value,
+            onChanged: (value) {
+              if (value != null) _setLanguage(value);
+            },
+            child: Column(
+              children: [
+                RadioListTile<String>(
+                  title: const Text('English'),
+                  value: 'en',
+                ),
+                RadioListTile<String>(title: const Text('اردو'), value: 'ur'),
+              ],
+            ),
+          ),
+          const Divider(height: 32),
+          SwitchListTile(
+            title: Text(urdu ? 'ڈارک موڈ' : 'Dark mode'),
+            subtitle: Text(
+              urdu ? 'گہرا تھیم استعمال کریں' : 'Use a dark appearance',
+            ),
+            secondary: const Icon(Icons.dark_mode_outlined),
+            value: appThemeMode.value == ThemeMode.dark,
+            onChanged: _setDarkMode,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            urdu
+                ? 'آپ کی ترتیبات خودکار طور پر محفوظ ہوں گی۔'
+                : 'Your settings are saved automatically.',
+          ),
+        ],
       ),
-      home: const HomeScreen(),
     );
   }
 }
@@ -49,6 +169,16 @@ class HomeScreen extends StatelessWidget {
           'Amma Para Quran',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
+        actions: [
+          IconButton(
+            tooltip: tr('Settings', 'ترتیبات'),
+            icon: const Icon(Icons.settings_outlined),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SettingsScreen()),
+            ),
+          ),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(20),
@@ -60,13 +190,13 @@ class HomeScreen extends StatelessWidget {
               borderRadius: BorderRadius.circular(24),
               border: Border.all(color: gold, width: 1.5),
             ),
-            child: const Column(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Icon(Icons.menu_book_rounded, color: gold, size: 42),
                 SizedBox(height: 16),
                 Text(
-                  'Welcome to Amma Para',
+                  tr('Welcome to Amma Para', 'عمّ پارہ میں خوش آمدید'),
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 24,
@@ -92,8 +222,8 @@ class HomeScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 28),
-          const Text(
-            'Your Learning',
+          Text(
+            tr('Your Learning', 'آپ کی تعلیم'),
             style: TextStyle(
               color: forestGreen,
               fontSize: 22,
@@ -103,8 +233,11 @@ class HomeScreen extends StatelessWidget {
           const SizedBox(height: 14),
           _FeatureCard(
             icon: Icons.menu_book_rounded,
-            title: 'Read Quran',
-            subtitle: 'Read Arabic ayat with Urdu translation',
+            title: tr('Read Quran', 'قرآن پڑھیں'),
+            subtitle: tr(
+              'Read Arabic ayat with Urdu translation',
+              'عربی آیات اردو ترجمے کے ساتھ پڑھیں',
+            ),
             onTap: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const SurahListScreen()),
@@ -112,8 +245,8 @@ class HomeScreen extends StatelessWidget {
           ),
           _FeatureCard(
             icon: Icons.headphones_rounded,
-            title: 'Listen to Tilawat',
-            subtitle: 'Listen to Quran recitation',
+            title: tr('Listen to Tilawat', 'تلاوت سنیں'),
+            subtitle: tr('Listen to Quran recitation', 'قرآن کی تلاوت سنیں'),
             onTap: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const SurahListScreen()),
@@ -121,8 +254,11 @@ class HomeScreen extends StatelessWidget {
           ),
           _FeatureCard(
             icon: Icons.school_rounded,
-            title: 'Learn Arabic Grammar',
-            subtitle: 'Study Ism, Fi‘l, Harf, Nahw and Sarf',
+            title: tr('Learn Arabic Grammar', 'عربی قواعد سیکھیں'),
+            subtitle: tr(
+              'Study Ism, Fi‘l, Harf, Nahw and Sarf',
+              'اسم، فعل، حرف، نحو اور صرف سیکھیں',
+            ),
             onTap: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const GrammarScreen()),
@@ -130,8 +266,11 @@ class HomeScreen extends StatelessWidget {
           ),
           _FeatureCard(
             icon: Icons.quiz_rounded,
-            title: 'Practice Quiz',
-            subtitle: 'Test your Quran and grammar knowledge',
+            title: tr('Practice Quiz', 'مشق کے سوالات'),
+            subtitle: tr(
+              'Test your Quran and grammar knowledge',
+              'قرآن اور قواعد کا علم جانچیں',
+            ),
             onTap: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const GrammarQuizScreen()),
@@ -141,7 +280,6 @@ class HomeScreen extends StatelessWidget {
       ),
     );
   }
-
 }
 
 class _FeatureCard extends StatelessWidget {
@@ -206,9 +344,9 @@ class _SurahListScreenState extends State<SurahListScreen> {
   }
 
   Future<List<dynamic>> loadSurahs() async {
-    final response = await http.get(
-      Uri.parse('https://api.alquran.cloud/v1/juz/30/quran-uthmani'),
-    ).timeout(const Duration(seconds: 30));
+    final response = await http
+        .get(Uri.parse('https://api.alquran.cloud/v1/juz/30/quran-uthmani'))
+        .timeout(const Duration(seconds: 30));
 
     if (response.statusCode != 200) {
       throw Exception('Could not load Quran data.');
@@ -246,7 +384,7 @@ class _SurahListScreenState extends State<SurahListScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text('Quran data could not load. Check your internet.'),
+                    Text('Quran data could not load. Check your internet.'),
                     const SizedBox(height: 12),
                     ElevatedButton(
                       onPressed: () {
@@ -268,10 +406,7 @@ class _SurahListScreenState extends State<SurahListScreen> {
               final surah = surahs[index] as Map<String, dynamic>;
               return Card(
                 color: Colors.white,
-                margin: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 5,
-                ),
+                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                 child: ListTile(
                   leading: CircleAvatar(
                     backgroundColor: forestGreen,
@@ -345,7 +480,8 @@ class _SurahReaderScreenState extends State<SurahReaderScreen> {
       if (mounted) setState(() => playingAyahNumber = null);
       return;
     }
-    if (playingAyahNumber == ayahNumber && audioPlayer.processingState != ProcessingState.completed) {
+    if (playingAyahNumber == ayahNumber &&
+        audioPlayer.processingState != ProcessingState.completed) {
       await audioPlayer.play();
       return;
     }
@@ -355,7 +491,8 @@ class _SurahReaderScreenState extends State<SurahReaderScreen> {
 
   Future<void> playAyah(int ayahNumber) async {
     try {
-      final audioUrl = 'https://cdn.islamic.network/quran/audio/128/ar.alafasy/$ayahNumber.mp3';
+      final audioUrl =
+          'https://cdn.islamic.network/quran/audio/128/ar.alafasy/$ayahNumber.mp3';
       await audioPlayer.setUrl(audioUrl);
       await audioPlayer.play();
       if (mounted) {
@@ -364,20 +501,30 @@ class _SurahReaderScreenState extends State<SurahReaderScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Audio could not be played. Please try again.')),
+          const SnackBar(
+            content: Text('Audio could not be played. Please try again.'),
+          ),
         );
       }
     }
   }
 
   Future<List<Map<String, dynamic>>> loadAyahs() async {
-    final arabicResponse = await http.get(
-      Uri.parse('https://api.alquran.cloud/v1/surah/${widget.surahNumber}/quran-uthmani'),
-    ).timeout(const Duration(seconds: 30));
+    final arabicResponse = await http
+        .get(
+          Uri.parse(
+            'https://api.alquran.cloud/v1/surah/${widget.surahNumber}/quran-uthmani',
+          ),
+        )
+        .timeout(const Duration(seconds: 30));
 
-    final urduResponse = await http.get(
-      Uri.parse('https://api.alquran.cloud/v1/surah/${widget.surahNumber}/ur.jalandhry'),
-    ).timeout(const Duration(seconds: 30));
+    final urduResponse = await http
+        .get(
+          Uri.parse(
+            'https://api.alquran.cloud/v1/surah/${widget.surahNumber}/ur.jalandhry',
+          ),
+        )
+        .timeout(const Duration(seconds: 30));
 
     if (arabicResponse.statusCode != 200 || urduResponse.statusCode != 200) {
       throw Exception('Could not load this Surah.');
@@ -466,15 +613,21 @@ class _SurahReaderScreenState extends State<SurahReaderScreen> {
                       Align(
                         alignment: Alignment.centerLeft,
                         child: IconButton(
-                          tooltip: playingAyahNumber == ayah['globalNumber'] && audioPlayer.playing ? 'Pause ayah' : 'Play ayah',
+                          tooltip:
+                              playingAyahNumber == ayah['globalNumber'] &&
+                                  audioPlayer.playing
+                              ? 'Pause ayah'
+                              : 'Play ayah',
                           icon: Icon(
-                            playingAyahNumber == ayah['globalNumber'] && audioPlayer.playing
+                            playingAyahNumber == ayah['globalNumber'] &&
+                                    audioPlayer.playing
                                 ? Icons.pause_circle_outline
                                 : Icons.play_circle_outline,
                             color: forestGreen,
                             size: 30,
                           ),
-                          onPressed: () => toggleAyah(ayah['globalNumber'] as int),
+                          onPressed: () =>
+                              toggleAyah(ayah['globalNumber'] as int),
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -529,7 +682,8 @@ class GrammarScreen extends StatelessWidget {
     },
     {
       'title': '3. Harf (حرف)',
-      'meaning': 'A particle whose meaning depends on its use with other words.',
+      'meaning':
+          'A particle whose meaning depends on its use with other words.',
       'example': 'مِنْ',
       'urdu': 'مِنْ — سے',
     },
@@ -554,44 +708,45 @@ class GrammarScreen extends StatelessWidget {
           const SizedBox(height: 6),
           const Text('Begin with three basic Arabic word categories.'),
           const SizedBox(height: 16),
-          ...lessons.map((lesson) => Card(
-                color: Colors.white,
-                margin: const EdgeInsets.only(bottom: 12),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        lesson['title']!,
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: forestGreen,
-                        ),
+          ...lessons.map(
+            (lesson) => Card(
+              color: Colors.white,
+              margin: const EdgeInsets.only(bottom: 12),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      lesson['title']!,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: forestGreen,
                       ),
-                      const SizedBox(height: 8),
-                      Text(lesson['meaning']!),
-                      const SizedBox(height: 10),
-                      Center(
-                        child: Text(
-                          lesson['example']!,
-                          textDirection: TextDirection.rtl,
-                          style: const TextStyle(fontSize: 30),
-                        ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(lesson['meaning']!),
+                    const SizedBox(height: 10),
+                    Center(
+                      child: Text(
+                        lesson['example']!,
+                        textDirection: TextDirection.rtl,
+                        style: const TextStyle(fontSize: 30),
                       ),
-                      const SizedBox(height: 6),
-                      Text(lesson['urdu']!),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(lesson['urdu']!),
+                  ],
                 ),
-              )),
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
 }
-
 
 class GrammarQuizScreen extends StatefulWidget {
   const GrammarQuizScreen({super.key});
@@ -644,10 +799,12 @@ class _GrammarQuizScreenState extends State<GrammarQuizScreen> {
       final completed = (prefs.getInt('completedQuizzes') ?? 0) + 1;
       await prefs.setInt('completedQuizzes', completed);
       await prefs.setInt('lastQuizScore', newScore);
-      await prefs.setInt('bestQuizScore',
-          newScore > (prefs.getInt('bestQuizScore') ?? 0)
-              ? newScore
-              : (prefs.getInt('bestQuizScore') ?? 0));
+      await prefs.setInt(
+        'bestQuizScore',
+        newScore > (prefs.getInt('bestQuizScore') ?? 0)
+            ? newScore
+            : (prefs.getInt('bestQuizScore') ?? 0),
+      );
 
       if (!mounted) return;
       setState(() {
@@ -668,7 +825,7 @@ class _GrammarQuizScreenState extends State<GrammarQuizScreen> {
     return Scaffold(
       backgroundColor: cream,
       appBar: AppBar(
-        title: const Text('Practice Quiz'),
+        title: Text(tr('Practice Quiz', 'مشق کے سوالات')),
         backgroundColor: forestGreen,
         foregroundColor: Colors.white,
       ),
@@ -679,13 +836,24 @@ class _GrammarQuizScreenState extends State<GrammarQuizScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.emoji_events, size: 72, color: Color(0xFFD4AF65)),
+                    const Icon(
+                      Icons.emoji_events,
+                      size: 72,
+                      color: Color(0xFFD4AF65),
+                    ),
                     const SizedBox(height: 16),
-                    const Text('Quiz Completed!',
-                        style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
+                    Text(
+                      'Quiz Completed!',
+                      style: TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                     const SizedBox(height: 12),
-                    Text('Your score: $score / ${questions.length}',
-                        style: const TextStyle(fontSize: 22)),
+                    Text(
+                      'Your score: $score / ${questions.length}',
+                      style: const TextStyle(fontSize: 22),
+                    ),
                     const SizedBox(height: 20),
                     ElevatedButton(
                       onPressed: () => setState(() {
@@ -702,8 +870,10 @@ class _GrammarQuizScreenState extends State<GrammarQuizScreen> {
             : Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text('Question ${index + 1} of ${questions.length}',
-                      style: const TextStyle(color: forestGreen, fontSize: 16)),
+                  Text(
+                    'Question ${index + 1} of ${questions.length}',
+                    style: const TextStyle(color: forestGreen, fontSize: 16),
+                  ),
                   const SizedBox(height: 16),
                   LinearProgressIndicator(
                     value: (index + 1) / questions.length,
@@ -711,27 +881,34 @@ class _GrammarQuizScreenState extends State<GrammarQuizScreen> {
                     backgroundColor: Colors.black12,
                   ),
                   const SizedBox(height: 28),
-                  Text(questions[index]['q'] as String,
-                      style: const TextStyle(fontSize: 23, fontWeight: FontWeight.bold)),
+                  Text(
+                    questions[index]['q'] as String,
+                    style: const TextStyle(
+                      fontSize: 23,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                   const SizedBox(height: 18),
                   ...(questions[index]['options'] as List<String>)
                       .asMap()
                       .entries
-                      .map((option) => Card(
-                            color: selected == option.key
-                                ? const Color(0xFFE2EBDD)
-                                : Colors.white,
-                            child: ListTile(
-                              leading: Icon(
-                                selected == option.key
-                                    ? Icons.radio_button_checked
-                                    : Icons.radio_button_unchecked,
-                                color: forestGreen,
-                              ),
-                              title: Text(option.value),
-                              onTap: () => setState(() => selected = option.key),
+                      .map(
+                        (option) => Card(
+                          color: selected == option.key
+                              ? const Color(0xFFE2EBDD)
+                              : Colors.white,
+                          child: ListTile(
+                            leading: Icon(
+                              selected == option.key
+                                  ? Icons.radio_button_checked
+                                  : Icons.radio_button_unchecked,
+                              color: forestGreen,
                             ),
-                          )),
+                            title: Text(option.value),
+                            onTap: () => setState(() => selected = option.key),
+                          ),
+                        ),
+                      ),
                   const Spacer(),
                   ElevatedButton(
                     style: ElevatedButton.styleFrom(
@@ -740,7 +917,11 @@ class _GrammarQuizScreenState extends State<GrammarQuizScreen> {
                       padding: const EdgeInsets.all(14),
                     ),
                     onPressed: selected == null ? null : submitAnswer,
-                    child: Text(index == questions.length - 1 ? 'Finish Quiz' : 'Next Question'),
+                    child: Text(
+                      index == questions.length - 1
+                          ? 'Finish Quiz'
+                          : 'Next Question',
+                    ),
                   ),
                 ],
               ),
@@ -748,7 +929,6 @@ class _GrammarQuizScreenState extends State<GrammarQuizScreen> {
     );
   }
 }
-
 
 class ProgressScreen extends StatelessWidget {
   const ProgressScreen({super.key});
@@ -794,16 +974,20 @@ class ProgressScreen extends StatelessWidget {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              const Text(
+              Text(
                 'Your Learning Journey',
                 style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 16),
               stat('Quizzes completed', '$completed', Icons.quiz),
-              stat('Last quiz score', '$lastScore / 5', Icons.assignment_turned_in),
+              stat(
+                'Last quiz score',
+                '$lastScore / 5',
+                Icons.assignment_turned_in,
+              ),
               stat('Best quiz score', '$bestScore / 5', Icons.emoji_events),
               const SizedBox(height: 12),
-              const Text(
+              Text(
                 'Complete a practice quiz to start building your progress.',
                 textAlign: TextAlign.center,
               ),
