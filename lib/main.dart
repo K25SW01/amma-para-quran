@@ -1,8 +1,8 @@
 import 'dart:convert';
 
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:http/http.dart' as http;
 import 'package:just_audio/just_audio.dart';
 
 void main() {
@@ -344,15 +344,8 @@ class _SurahListScreenState extends State<SurahListScreen> {
   }
 
   Future<List<dynamic>> loadSurahs() async {
-    final response = await http
-        .get(Uri.parse('https://api.alquran.cloud/v1/juz/30/quran-uthmani'))
-        .timeout(const Duration(seconds: 30));
-
-    if (response.statusCode != 200) {
-      throw Exception('Could not load Quran data.');
-    }
-
-    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    final content = await rootBundle.loadString('assets/data/juz30.json');
+    final json = jsonDecode(content) as Map<String, dynamic>;
     final ayahs = json['data']['ayahs'] as List<dynamic>;
     final Map<int, Map<String, dynamic>> unique = {};
 
@@ -510,40 +503,30 @@ class _SurahReaderScreenState extends State<SurahReaderScreen> {
   }
 
   Future<List<Map<String, dynamic>>> loadAyahs() async {
-    final arabicResponse = await http
-        .get(
-          Uri.parse(
-            'https://api.alquran.cloud/v1/surah/${widget.surahNumber}/quran-uthmani',
-          ),
-        )
-        .timeout(const Duration(seconds: 30));
+    final arabicContent =
+        await rootBundle.loadString('assets/data/juz30.json');
+    final urduContent =
+        await rootBundle.loadString('assets/data/juz30_urdu.json');
 
-    final urduResponse = await http
-        .get(
-          Uri.parse(
-            'https://api.alquran.cloud/v1/surah/${widget.surahNumber}/ur.jalandhry',
-          ),
-        )
-        .timeout(const Duration(seconds: 30));
+    final arabicAll =
+        jsonDecode(arabicContent)['data']['ayahs'] as List<dynamic>;
+    final urduAll =
+        jsonDecode(urduContent)['data']['ayahs'] as List<dynamic>;
 
-    if (arabicResponse.statusCode != 200 || urduResponse.statusCode != 200) {
-      throw Exception('Could not load this Surah.');
-    }
+    final arabicData = arabicAll.where((ayah) =>
+        ayah['surah']['number'] == widget.surahNumber).toList();
+    final urduData = urduAll.where((ayah) =>
+        ayah['surah']['number'] == widget.surahNumber).toList();
 
-    final arabicData =
-        jsonDecode(arabicResponse.body)['data']['ayahs'] as List<dynamic>;
-    final urduData =
-        jsonDecode(urduResponse.body)['data']['ayahs'] as List<dynamic>;
-
-    if (arabicData.length != urduData.length) {
-      throw Exception('Arabic and Urdu ayah counts do not match.');
+    if (arabicData.isEmpty || arabicData.length != urduData.length) {
+      throw Exception('Offline Quran data is unavailable for this Surah.');
     }
 
     final result = <Map<String, dynamic>>[];
 
     for (int i = 0; i < arabicData.length; i++) {
       if (arabicData[i]['numberInSurah'] != urduData[i]['numberInSurah']) {
-        throw Exception('Ayah numbers do not match.');
+        throw Exception('Arabic and Urdu ayah numbers do not match.');
       }
 
       result.add({
